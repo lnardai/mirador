@@ -24,11 +24,11 @@ export type DictationPhase = "idle" | "starting" | "listening" | "transcribing";
 export type VoiceCommand = "stop" | "repeat";
 
 const voiceCommands: Record<VoiceCommand, string[]> = {
-  stop: ["stop", "stop listening", "stop talking", "be quiet", "that's all", "that is all", "állj", "elég", "ennyi", "fejezd be"],
-  repeat: ["repeat", "repeat that", "repeat it", "say that again", "say it again", "again", "ismételd", "ismételd meg", "mondd újra", "mondd még egyszer"],
+  stop: ["stop", "stop listening", "stop talking", "be quiet", "that's all", "that is all", "enough"],
+  repeat: ["repeat", "repeat that", "repeat it", "say that again", "say it again", "again", "once more"],
 };
 
-const politeWords = /^(please|ok|okay|kérlek)\s+|\s+(please|kérlek)$/gu;
+const politeWords = /^(please|ok|okay)\s+|\s+please$/g;
 
 const asCommand = (words: string) =>
   words
@@ -39,11 +39,11 @@ const asCommand = (words: string) =>
     .replace(politeWords, "")
     .trim();
 
-/** Only the whole of what was heard counts, in English or in the words spoken: "stop the build" goes to the agent. */
-export function voiceCommand(text: string, original: string | null): VoiceCommand | null {
-  const said = [text, original ?? ""].map(asCommand);
+/** In English, after translation, so one set of phrases serves every language; only the whole of it counts: "stop the build" goes to the agent. */
+export function voiceCommand(text: string): VoiceCommand | null {
+  const said = asCommand(text);
   for (const [command, phrases] of Object.entries(voiceCommands) as [VoiceCommand, string[]][]) {
-    if (said.some((words) => phrases.includes(words))) return command;
+    if (phrases.includes(said)) return command;
   }
   return null;
 }

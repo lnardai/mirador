@@ -76,7 +76,7 @@ export function useDictation({
   const put = (dictated: Dictated) => {
     if (dictated.text.trim() === "") return setProblem(NO_WORDS);
     if (sendsWhatIsHeard.current) {
-      const command = voiceCommand(dictated.text, dictated.original);
+      const command = voiceCommand(dictated.text);
       if (command === "stop") return;
       if (command === "repeat") return repeatLastReply(conversationId) || setProblem(NOTHING_TO_REPEAT);
     }

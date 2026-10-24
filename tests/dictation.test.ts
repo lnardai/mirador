@@ -147,20 +147,20 @@ describe("a clip in WAV", () => {
 
 describe("a command said while keeping a spoken conversation going", () => {
   test("stop and repeat are heard in their usual wordings, whatever the case, punctuation or politeness", () => {
-    expect(voiceCommand("Stop.", null)).toBe("stop");
-    expect(voiceCommand("Stop listening, please!", null)).toBe("stop");
-    expect(voiceCommand("Please repeat that.", null)).toBe("repeat");
-    expect(voiceCommand("Say that again?", null)).toBe("repeat");
+    expect(voiceCommand("Stop.")).toBe("stop");
+    expect(voiceCommand("Stop listening, please!")).toBe("stop");
+    expect(voiceCommand("Please repeat that.")).toBe("repeat");
+    expect(voiceCommand("Say that again?")).toBe("repeat");
   });
 
-  test("the words spoken count too, when what goes in is their translation", () => {
-    expect(voiceCommand("Repeat it once more.", "Ismételd meg!")).toBe("repeat");
-    expect(voiceCommand("Enough.", "Elég.")).toBe("stop");
+  test("only English counts, as what was said in another language is translated first", () => {
+    expect(voiceCommand("Elég.")).toBeNull();
+    expect(voiceCommand("Enough.")).toBe("stop");
   });
 
   test("a command inside a longer message goes to the agent", () => {
-    expect(voiceCommand("Stop the build and repeat the tests.", null)).toBeNull();
-    expect(voiceCommand("Can you repeat that function for the other file?", null)).toBeNull();
-    expect(voiceCommand("", null)).toBeNull();
+    expect(voiceCommand("Stop the build and repeat the tests.")).toBeNull();
+    expect(voiceCommand("Can you repeat that function for the other file?")).toBeNull();
+    expect(voiceCommand("")).toBeNull();
   });
 });
