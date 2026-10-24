@@ -60,6 +60,25 @@ test("with Keep talking, the microphone opens again once a dictated message's re
     }).observe(document, { subtree: true, attributes: true, attributeFilter: ["aria-label"] });
   });
   const readings = () => page.evaluate(() => (window as unknown as { readings: number[] }).readings);
+  /** The chimes by their first pitch: rising from 660 Hz as the microphone opens, falling from 880 Hz once it has heard. */
+  await page.addInitScript(() => {
+    const chimes: string[] = [];
+    (window as unknown as { chimes: string[] }).chimes = chimes;
+    const firstPitch = new WeakMap<AudioParam, number>();
+    const setValueAtTime = AudioParam.prototype.setValueAtTime;
+    AudioParam.prototype.setValueAtTime = function (value, at) {
+      if (!firstPitch.has(this)) firstPitch.set(this, value);
+      return setValueAtTime.call(this, value, at);
+    };
+    const start = OscillatorNode.prototype.start;
+    OscillatorNode.prototype.start = function (at) {
+      const pitch = firstPitch.get(this.frequency);
+      if (pitch === 660) chimes.push("listening");
+      if (pitch === 880) chimes.push("heard");
+      return start.call(this, at);
+    };
+  });
+  const chimes = () => page.evaluate(() => (window as unknown as { chimes: string[] }).chimes);
   await signIn(page, host);
   await addWorkspace(page, host.projectDir);
   const profiles = await createProfile(page, "voice", "", "", "opencode");
@@ -120,5 +139,10 @@ test("with Keep talking, the microphone opens again once a dictated message's re
     await page.waitForTimeout(6_000);
     await expect(asked).toHaveCount(4);
     await expect(dictate).toHaveAttribute("aria-pressed", "false");
+  });
+
+  await test.step("a chime tells each time the microphone opens again, and each time it has heard, but not when dictating by hand", async () => {
+    const turns = ["listening", "heard"];
+    expect(await chimes()).toEqual([...turns, ...turns, ...turns, ...turns, "listening"]);
   });
 });

@@ -9,7 +9,7 @@ import { hints } from "./hints.ts";
 import { insertAtCaret } from "./insert-at-caret.ts";
 import { pauseWatch, type PauseWatch } from "./pause-watch.ts";
 import { startRecording, type Recording } from "./recorder.ts";
-import { allowReplyAudio, onSpokenReplyHeard, repeatLastReply, stopReading } from "./reply-player.ts";
+import { allowReplyAudio, chime, onSpokenReplyHeard, repeatLastReply, stopReading } from "./reply-player.ts";
 import { dictates, shortcutKeys } from "./shortcuts.ts";
 
 const RECOGNITION_OFF = "Dictating needs speech recognition. Settings → Voice can turn it on.";
@@ -104,7 +104,9 @@ export function useDictation({
         return setProblem(NOTHING_HEARD);
       }
       setPhase("transcribing");
-      put(await transcribed(conversationId, await recording.finish()));
+      const clip = await recording.finish();
+      if (sendsWhatIsHeard.current) void chime("heard");
+      put(await transcribed(conversationId, clip));
     } catch (error) {
       if (nextDictationBegan()) return;
       setProblem(problemOf(error));
@@ -170,12 +172,14 @@ export function useDictation({
     if (next.action === "finish") void finish();
   };
 
-  /** Takes up the conversation only when nothing else is going on in it and the page is in view. */
+  /** Takes up the conversation only when nothing else is going on in it and the page is in view; the chime ends before the microphone could hear it. */
   const listenAgain = (heardIn: string) => {
     if (heardIn !== conversationId || !settings.keepTalking || !available || listening.current || phase !== "idle") return false;
     if (document.hidden || aDialogIsOpen()) return false;
     press.current = { kind: "tapped" };
-    begin({ listeningAgain: true });
+    void chime("listening").then(() => {
+      if (!listening.current && press.current.kind === "tapped") begin({ listeningAgain: true });
+    });
     return true;
   };
 
