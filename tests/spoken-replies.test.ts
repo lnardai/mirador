@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { ConversationEvent, StoredEvent } from "../shared/model.ts";
 import type { TimelineBlock } from "../shared/timeline.ts";
 import { lastReply, spokenTurn } from "../shared/spoken-replies.ts";
+import { listenAgainIn, onSpokenReplyHeard } from "../web/reply-player.ts";
 
 const stored = (...events: ConversationEvent[]): StoredEvent[] => events.map((event, index) => ({ seq: index + 1, at: index, event }));
 const asked: ConversationEvent = { type: "user-message", text: "Run the e2e tests." };
@@ -26,5 +27,21 @@ describe("reading the reply to a dictated message", () => {
     expect(lastReply([block("user", "u1"), block("agent", "a1"), block("thought", "t1"), block("agent", "a2"), block("thought", "t2")])?.key).toBe("a2");
     expect(lastReply([block("user", "u1"), block("agent", "a1"), block("user", "u2"), block("thought", "t1")])).toBeNull();
     expect(lastReply([])).toBeNull();
+  });
+});
+
+describe("keeping a spoken conversation going", () => {
+  test("only the first composer that takes up the conversation listens again, and one gone hears nothing", () => {
+    const heard: string[] = [];
+    const busy = onSpokenReplyHeard((conversationId) => (heard.push(`busy ${conversationId}`), false));
+    const free = onSpokenReplyHeard((conversationId) => (heard.push(`free ${conversationId}`), true));
+    const later = onSpokenReplyHeard((conversationId) => (heard.push(`later ${conversationId}`), true));
+    listenAgainIn("c1");
+    expect(heard).toEqual(["busy c1", "free c1"]);
+    free();
+    listenAgainIn("c2");
+    expect(heard.slice(2)).toEqual(["busy c2", "later c2"]);
+    busy();
+    later();
   });
 });

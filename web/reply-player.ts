@@ -37,6 +37,8 @@ let snapshot: Snapshot = { reading: null, problem: null };
 let stopCurrent: (() => void) | null = null;
 let awaited: AwaitedReply | null = null;
 const listeners = new Set<() => void>();
+/** Each says whether it takes up the conversation; only the first that does listens again. */
+const listenersAgain = new Set<(conversationId: string) => boolean>();
 
 /** A reply's summary and its sentences' sound, kept so that hearing it again starts at once, in the same words. */
 interface KeptSummary {
@@ -134,7 +136,7 @@ function inAdvance<T>(making: Promise<T>) {
   return making;
 }
 
-/** Sums the reply up and speaks it, starting as soon as the first sentence is ready; reading another reply stops this one. */
+/** Sums the reply up and speaks it, starting as soon as the first sentence is ready; reading another reply stops this one. Tells whether it was heard to the end. */
 export async function readReply(conversationId: string, key: string, reply: string, readingAs: string) {
   stopReading();
   allowReplyAudio();
@@ -155,13 +157,15 @@ export async function readReply(conversationId: string, key: string, reply: stri
     for (const index of sentences.keys()) {
       const sound = await next;
       if (index + 1 < sentences.length) next = inAdvance(soundOf(index + 1));
-      if (aborts.signal.aborted) return;
+      if (aborts.signal.aborted) return false;
       if (snapshot.reading?.phase !== "speaking") publish({ reading: { ...reading, phase: "speaking" } });
       await played(sound, (playing) => (source = playing));
-      if (aborts.signal.aborted) return;
+      if (aborts.signal.aborted) return false;
     }
+    return true;
   } catch (error) {
     if (!aborts.signal.aborted) publish({ problem: { conversationId, key, problem: problemOf(error) } });
+    return false;
   } finally {
     if (stopCurrent === stop) {
       stopCurrent = null;
@@ -197,5 +201,18 @@ export function readWhenSpokenTurnEnds(conversationId: string, events: StoredEve
   if (outcome === "going-on") return;
   awaited = null;
   const reply = outcome === "ended" ? lastReply(timeline) : null;
-  if (reply && readingAs) void readReply(conversationId, reply.key, reply.text, readingAs);
+  if (reply && readingAs) void readReply(conversationId, reply.key, reply.text, readingAs).then((heard) => heard && listenAgainIn(conversationId));
+}
+
+/** The first composer of the conversation that can listen again does; another pane of it stays quiet. */
+export function listenAgainIn(conversationId: string) {
+  for (const listener of listenersAgain) if (listener(conversationId)) return;
+}
+
+/** For keeping a spoken conversation going: called once a dictated message's reply has been read aloud to the end. */
+export function onSpokenReplyHeard(listener: (conversationId: string) => boolean) {
+  listenersAgain.add(listener);
+  return () => {
+    listenersAgain.delete(listener);
+  };
 }

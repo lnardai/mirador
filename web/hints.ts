@@ -31,6 +31,7 @@ export const hints = {
   replyVoiceName: "One of the server's voices, as alloy is one of OpenAI's.",
   readAloud: "Reads a short summary of this reply aloud.",
   stopReadingAloud: "Stops reading this reply aloud.",
+  keepTalking: "Once the reply to what you dictated has been read aloud, the microphone opens again and what you say next is sent right away, for a conversation without touching the keyboard. Esc, or staying quiet for a few seconds, ends it.",
   sendRightAway: "Sends what you said as soon as it is text, instead of leaving it in the message box for you to check first.",
   dictate: "Speak instead of typing. Tap to start, and it stops when you pause or tap again; or hold it while you talk. What you said goes in at the caret.",
   dictateOff: "Dictating needs speech recognition. Settings → Voice can turn it on.",

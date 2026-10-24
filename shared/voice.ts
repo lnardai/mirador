@@ -40,6 +40,8 @@ export interface VoiceSettings {
   language: string;
   translateToEnglish: boolean;
   sendRightAway: boolean;
+  /** Once a dictated message's reply has been read aloud, listens again and sends what is said right away. */
+  keepTalking: boolean;
   /** How long this Mac's engine keeps a server loaded once unused; loading it again takes a while. */
   engineIdleMinutes: number;
 }
@@ -54,6 +56,7 @@ export const defaultVoiceSettings: VoiceSettings = {
   language: AUTO_LANGUAGE,
   translateToEnglish: true,
   sendRightAway: false,
+  keepTalking: false,
   engineIdleMinutes: 30,
 };
 

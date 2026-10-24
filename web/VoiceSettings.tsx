@@ -5,6 +5,7 @@ import { bestFitting, choosableModel, fitsMemory, modelsFor, SPOKEN_VOICE, type 
 import {
   AUTO_LANGUAGE,
   isEnglish,
+  speaksReplies,
   thisMacModelsInUse,
   thisMacReplyVoice,
   type CustomEndpoint,
@@ -423,6 +424,14 @@ export function VoiceSettings({ settings, engine, profiles }: { settings: Settin
       <fieldset className="voice-service">
         <legend>When the agent replies</legend>
         <ReplyChoice saved={shown.replyVoice} language={shown.replyLanguage} engine={engine} idleMinutes={idleMinutes} voiceModelSet={voiceModelSet} save={saveIn("replies")} />
+        {speaksReplies(shown) && (
+          <div className="sending-settings">
+            <label data-hint={hints.keepTalking}>
+              <input type="checkbox" checked={shown.keepTalking} onChange={(event) => saveIn("replies")({ keepTalking: event.target.checked })} />
+              Keep talking
+            </label>
+          </div>
+        )}
         <SavedStatus section="replies" outcome={outcome} />
       </fieldset>
       <ModelsOnThisMac
