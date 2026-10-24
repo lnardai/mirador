@@ -19,8 +19,10 @@ const originalHome = process.env.HOME;
 
 /**
  * What the tests type differs with the terminal's shell: sh here, and on Windows PowerShell, where $$ means something
- * else, printf is missing, and sleep runs inside the shell, so it never shows as busy.
+ * else, printf is missing, and sleep runs inside the shell, so it never shows as busy. Where sh is bash, as on Arch,
+ * its login profile may set the title at every prompt, so a title the test sets first stops the prompt doing so.
  */
+const titleKept = "unset PROMPT_COMMAND; ";
 const shell =
   process.platform === "win32"
     ? {
@@ -32,7 +34,7 @@ const shell =
     : {
         name: "sh",
         pid: "$$",
-        settingTitle: (title: string) => `printf '\\033]0;%s\\007' '${title}'`,
+        settingTitle: (title: string) => `${titleKept}printf '\\033]0;%s\\007' '${title}'`,
         runningBun: (script: string) => `'${process.execPath}' -e "${script}"`,
       };
 
@@ -403,7 +405,7 @@ test.skipIf(process.platform === "win32")("a title a program writes in two piece
   const browser = fakeBrowser();
   terminals.attach(browser.socket, "c1");
   const { terminalId } = terminals.open("c1", 80, 24);
-  typing(terminalId, shell.runningBun("process.stdout.write('\\x1b]0;half-'); setTimeout(() => process.stdout.write('title\\x07'), 300)"));
+  typing(terminalId, titleKept + shell.runningBun("process.stdout.write('\\x1b]0;half-'); setTimeout(() => process.stdout.write('title\\x07'), 300)"));
   const [tab] = await tabsOnceSettled(browser.received, ([only]) => only?.terminals[0]?.title === "half-title");
   expect(tab?.terminals[0]?.title).toBe("half-title");
 });
