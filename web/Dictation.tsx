@@ -108,7 +108,7 @@ export function useDictation({
       const keepsTalking = sendsWhatIsHeard.current;
       /** Keep talking waits long for the first word, and the silence and noise before it are what recognition makes words up from. */
       const clip = await recording.finish(keepsTalking ? ending.speechSpan() : null);
-      if (settings.keepTalking) void chime("heard");
+      if (settings.keepTalking && speaksReplies(settings)) void chime("heard");
       const dictated = await transcribed(conversationId, clip);
       if (keepsTalking && madeUpFromSilence(dictated.text)) return listenOnAfterNoise();
       put(dictated);

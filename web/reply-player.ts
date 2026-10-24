@@ -320,7 +320,7 @@ function clockBeat({ click, body, loudness }: (typeof clockBeats)["tick"], at: n
   sound.stop(at + CLOCK_CLICK_SECONDS * 3);
 }
 
-/** Tick-tock, tick-tock, quietly, as the agent works on what was dictated. */
+/** Tick-tock, tick-tock, as the agent works on what was dictated. */
 function clockTicks() {
   if (!soundPlays()) return;
   const at = context!.currentTime;
