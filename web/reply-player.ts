@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 import type { StoredEvent } from "../shared/model.ts";
 import { lastReply, spokenTurn } from "../shared/spoken-replies.ts";
 import type { TimelineBlock } from "../shared/timeline.ts";
+import { connection, type ConnectionStatus } from "./connection.ts";
 
 /** A reply being read aloud, by its timeline block's key: summed up first, then spoken a sentence at a time. */
 export interface ReplyReading {
@@ -25,6 +26,8 @@ interface Snapshot {
 interface AwaitedReply {
   conversationId: string;
   afterSeq: number;
+  /** Keeping a spoken conversation going: a clock ticks while the agent works, so that silence isn't a mystery. */
+  ticks: boolean;
 }
 
 const RESUME_WAIT_MS = 500;
@@ -191,25 +194,42 @@ export function stopReading() {
 /** As when the user switches away from the conversation: a reply of another conversation reads on. */
 export function stopReadingIn(conversationId: string) {
   if (snapshot.reading?.conversationId === conversationId) stopReading();
-  if (awaited?.conversationId === conversationId) awaited = null;
+  forgetSpokenReply(conversationId);
 }
 
-/** The turn the message starts gets its last reply read aloud when it ends. */
-export function awaitSpokenReply(conversationId: string, events: StoredEvent[]) {
-  awaited = { conversationId, afterSeq: events.at(-1)?.seq ?? 0 };
+const TICKS_EVERY_MS = 15_000;
+let ticking: ReturnType<typeof setInterval> | null = null;
+
+function awaitReply(next: AwaitedReply | null) {
+  awaited = next;
+  if (ticking) clearInterval(ticking);
+  ticking = next?.ticks ? setInterval(() => connection.status === "open" && clockTicks(), TICKS_EVERY_MS) : null;
+}
+
+/** The turn the message starts gets its last reply read aloud when it ends; with ticks, a clock tells meanwhile that the agent is still at it. */
+export function awaitSpokenReply(conversationId: string, events: StoredEvent[], { ticks = false } = {}) {
+  awaitReply({ conversationId, afterSeq: events.at(-1)?.seq ?? 0, ticks });
 }
 
 /** As when a message the user typed starts the conversation's next turn; another pane's dictated message still gets its reply read. */
 export function forgetSpokenReply(conversationId: string) {
-  if (awaited?.conversationId === conversationId) awaited = null;
+  if (awaited?.conversationId === conversationId) awaitReply(null);
 }
+
+let lastStatus: ConnectionStatus = connection.status;
+
+/** Losing the host while the clock ticks would otherwise sound just like the agent working on. */
+connection.onStatus((status) => {
+  if (lastStatus === "open" && status !== "open" && awaited?.ticks) connectionLostTones();
+  lastStatus = status;
+});
 
 /** Reads the last reply aloud once the turn a dictated message started ends, for the page that dictated it. */
 export function readWhenSpokenTurnEnds(conversationId: string, events: StoredEvent[], timeline: TimelineBlock[], readingAs: string | null) {
   if (awaited?.conversationId !== conversationId) return;
   const outcome = spokenTurn(events, awaited.afterSeq);
   if (outcome === "going-on") return;
-  awaited = null;
+  awaitReply(null);
   const reply = outcome === "ended" ? lastReply(timeline) : null;
   if (reply && readingAs) void readReply(conversationId, reply.key, reply.text, readingAs).then((heard) => heard && listenAgainIn(conversationId));
 }
@@ -228,22 +248,55 @@ const CHIME_VOLUME = 0.45;
 /** For keeping a spoken conversation going with the eyes elsewhere: rising as the microphone opens, falling once it has heard. */
 export type Chime = "listening" | "heard";
 
+const soundPlays = () => context?.state === "running";
+
+/** A pitch gliding from one frequency to another, rising to its volume at once and fading out by its end. */
+function tone(from: number, to: number, at: number, seconds: number, loudness: number, shape: OscillatorType = "sine") {
+  const sound = context!.createOscillator();
+  const volume = context!.createGain();
+  sound.type = shape;
+  sound.frequency.setValueAtTime(from, at);
+  sound.frequency.exponentialRampToValueAtTime(to, at + seconds);
+  volume.gain.setValueAtTime(0.0001, at);
+  volume.gain.exponentialRampToValueAtTime(loudness, at + Math.min(0.02, seconds / 10));
+  volume.gain.exponentialRampToValueAtTime(0.0001, at + seconds);
+  sound.connect(volume).connect(context!.destination);
+  sound.start(at);
+  sound.stop(at + seconds);
+}
+
 /** Resolves once it has played, at once when the page can't play sound; by the clock, as a context suspended meanwhile would never end the tone. */
 export function chime(kind: Chime) {
-  if (!context || context.state !== "running") return Promise.resolve();
+  if (!soundPlays()) return Promise.resolve();
   const [from, to] = kind === "listening" ? [660, 990] : [880, 520];
-  const at = context.currentTime;
-  const tone = context.createOscillator();
-  const volume = context.createGain();
-  tone.frequency.setValueAtTime(from, at);
-  tone.frequency.exponentialRampToValueAtTime(to, at + CHIME_SECONDS);
-  volume.gain.setValueAtTime(0.0001, at);
-  volume.gain.exponentialRampToValueAtTime(CHIME_VOLUME, at + 0.02);
-  volume.gain.exponentialRampToValueAtTime(0.0001, at + CHIME_SECONDS);
-  tone.connect(volume).connect(context.destination);
-  tone.start(at);
-  tone.stop(at + CHIME_SECONDS);
+  tone(from, to, context!.currentTime, CHIME_SECONDS, CHIME_VOLUME);
   return new Promise<void>((resolve) => setTimeout(resolve, CHIME_SECONDS * 1000));
+}
+
+const CLOCK_BEATS = 4;
+const CLOCK_BEAT_SECONDS = 0.9;
+const CLOCK_TICK_SECONDS = 0.06;
+const CLOCK_VOLUME = 0.3;
+/** The tick higher than the tock, like an old pendulum clock's escapement. */
+const TICK_PITCH = 1_200;
+const TOCK_PITCH = 900;
+
+/** Tick-tock, tick-tock, quietly, as the agent works on what was dictated. */
+function clockTicks() {
+  if (!soundPlays()) return;
+  const at = context!.currentTime;
+  for (let beat = 0; beat < CLOCK_BEATS; beat++) {
+    const pitch = beat % 2 === 0 ? TICK_PITCH : TOCK_PITCH;
+    tone(pitch, pitch * 0.8, at + beat * CLOCK_BEAT_SECONDS, CLOCK_TICK_SECONDS, CLOCK_VOLUME, "triangle");
+  }
+}
+
+/** Two low falling tones: the page lost the host, so no reply is coming until it reconnects. */
+function connectionLostTones() {
+  if (!soundPlays()) return;
+  const at = context!.currentTime;
+  tone(330, 250, at, 0.3, CHIME_VOLUME);
+  tone(250, 180, at + 0.35, 0.4, CHIME_VOLUME);
 }
 
 /** The first composer of the conversation that can listen again does; another pane of it stays quiet. */

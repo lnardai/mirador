@@ -1531,7 +1531,7 @@ function Composer({
   const sendPrompt = (message: string, imageIds: string[], afterTurn: boolean) => {
     if (!connection.send({ type: "conversation.prompt", conversationId: conversation.id, text: message, imageIds, afterTurn })) return;
     stopReading();
-    if (dictation.takeDictated() && speaksReplies(voiceSettings)) awaitSpokenReply(conversation.id, events);
+    if (dictation.takeDictated() && speaksReplies(voiceSettings)) awaitSpokenReply(conversation.id, events, { ticks: voiceSettings.keepTalking });
     else forgetSpokenReply(conversation.id);
     setText("");
     images.clearAfterSending();
