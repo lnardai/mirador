@@ -3,11 +3,11 @@ import { flushSync } from "react-dom";
 import { isCanvasFrameMessage } from "../shared/canvas-document.ts";
 import { speaksReplies, type Dictation as Dictated, type VoiceSettings } from "../shared/voice.ts";
 import type { VoiceEngineStatus } from "../shared/voice-engine.ts";
-import { dictationStatus, pressed, released, spacedAtCaret, voiceCommand, type DictationPhase, type Press } from "./dictation.ts";
+import { dictationStatus, madeUpFromSilence, pressed, released, spacedAtCaret, voiceCommand, type DictationPhase, type Press } from "./dictation.ts";
 import { joinDrafts } from "./drafts.ts";
 import { hints } from "./hints.ts";
 import { insertAtCaret } from "./insert-at-caret.ts";
-import { KEEP_TALKING_WAIT_MS, pauseWatch, type PauseWatch } from "./pause-watch.ts";
+import { KEEP_TALKING_WAIT_MS, pauseWatch, type PauseWatch, type SpeechSpan } from "./pause-watch.ts";
 import { startRecording, type Recording } from "./recorder.ts";
 import { allowReplyAudio, chime, onSpokenReplyHeard, repeatLastReply, stopReading } from "./reply-player.ts";
 import { dictates, shortcutKeys } from "./shortcuts.ts";
@@ -40,6 +40,7 @@ function insertDictated(box: HTMLTextAreaElement | null, setText: Dispatch<SetSt
 interface Listening {
   recording: Promise<Recording>;
   heardSpeech: () => boolean;
+  speechSpan: () => SpeechSpan | null;
 }
 
 /**
@@ -74,7 +75,7 @@ export function useDictation({
   const available = settings.recognition.kind !== "off";
 
   const put = (dictated: Dictated) => {
-    if (dictated.text.trim() === "") return setProblem(NO_WORDS);
+    if (!/[\p{L}\p{N}]/u.test(dictated.text)) return setProblem(NO_WORDS);
     if (sendsWhatIsHeard.current) {
       const command = voiceCommand(dictated.text);
       if (command === "stop") return;
@@ -104,14 +105,27 @@ export function useDictation({
         return setProblem(NOTHING_HEARD);
       }
       setPhase("transcribing");
-      const clip = await recording.finish();
+      const keepsTalking = sendsWhatIsHeard.current;
+      /** Keep talking waits long for the first word, and the silence and noise before it are what recognition makes words up from. */
+      const clip = await recording.finish(keepsTalking ? ending.speechSpan() : null);
       if (settings.keepTalking) void chime("heard");
-      put(await transcribed(conversationId, clip));
+      const dictated = await transcribed(conversationId, clip);
+      if (keepsTalking && madeUpFromSilence(dictated.text)) return listenOnAfterNoise();
+      put(dictated);
     } catch (error) {
       if (nextDictationBegan()) return;
       setProblem(problemOf(error));
     }
     setPhase("idle");
+  };
+
+  /** What was heard was no message, so the conversation goes on as if nothing had been. */
+  const listenOnAfterNoise = () => {
+    setPhase("idle");
+    press.current = { kind: "tapped" };
+    void chime("listening").then(() => {
+      if (!listening.current && press.current.kind === "tapped") begin({ listeningAgain: true });
+    });
   };
 
   const onLevel = (watch: PauseWatch, level: number) => {
@@ -136,6 +150,7 @@ export function useDictation({
     const started: Listening = {
       recording: startRecording((level) => watch && onLevel(watch, level), recordingStarted),
       heardSpeech: () => watch?.heardSpeech() ?? false,
+      speechSpan: () => watch?.speechSpan() ?? null,
     };
     listening.current = started;
     setPhase("starting");

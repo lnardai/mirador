@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { defaultVoiceSettings, type VoiceSettings } from "../shared/voice.ts";
 import type { EngineServerState } from "../shared/voice-engine.ts";
-import { dictationStatus, HOLD_MS, microphoneProblem, NO_MICROPHONE_API, pressed, released, spacedAtCaret, voiceCommand, type MicrophonePlace, type Press } from "../web/dictation.ts";
+import { dictationStatus, HOLD_MS, microphoneProblem, NO_MICROPHONE_API, pressed, released, madeUpFromSilence, spacedAtCaret, voiceCommand, type MicrophonePlace, type Press } from "../web/dictation.ts";
 import { KEEP_TALKING_WAIT_MS, NOTHING_HEARD_MS, PAUSE_ENDS_MS, pauseWatch } from "../web/pause-watch.ts";
 import { wavOf } from "../web/wav.ts";
 
@@ -50,6 +50,20 @@ describe("the pause watch", () => {
     const watch = pauseWatch(1_000);
     expect(watch.hear(room, 1_000 + NOTHING_HEARD_MS - 1)).toBe("go-on");
     expect(watch.hear(room, 1_000 + NOTHING_HEARD_MS)).toBe("nothing-heard");
+  });
+
+  test("tells where speech was heard, with half a second around it, so that only that part is sent", () => {
+    const watch = pauseWatch(1_000, KEEP_TALKING_WAIT_MS);
+    expect(watch.speechSpan()).toBeNull();
+    watch.hear(room, 30_000);
+    watch.hear(speech, 31_000);
+    watch.hear(speech, 33_000);
+    watch.hear(room, 34_000);
+    expect(watch.speechSpan()).toEqual({ fromMs: 29_500, toMs: 32_500 });
+    const early = pauseWatch(1_000);
+    early.hear(room, 1_100);
+    early.hear(speech, 1_200);
+    expect(early.speechSpan(), "never before listening began").toEqual({ fromMs: 0, toMs: 700 });
   });
 
   test("keeping a spoken conversation going waits two minutes for the first word", () => {
@@ -169,5 +183,21 @@ describe("a command said while keeping a spoken conversation going", () => {
     expect(voiceCommand("Stop the build and repeat the tests.")).toBeNull();
     expect(voiceCommand("Can you repeat that function for the other file?")).toBeNull();
     expect(voiceCommand("")).toBeNull();
+  });
+});
+
+describe("what speech recognition makes up from silence", () => {
+  test("its usual phrases, alone or repeated, and nothing at all, are not worth sending", () => {
+    expect(madeUpFromSilence("Thank you.")).toBe(true);
+    expect(madeUpFromSilence("Thank you. Thank you. Thank you.")).toBe(true);
+    expect(madeUpFromSilence("Thanks for watching!")).toBe(true);
+    expect(madeUpFromSilence(" . ")).toBe(true);
+    expect(madeUpFromSilence("")).toBe(true);
+  });
+
+  test("anything more is what the user said", () => {
+    expect(madeUpFromSilence("Thank you, that works.")).toBe(false);
+    expect(madeUpFromSilence("Thank you. Now run the tests.")).toBe(false);
+    expect(madeUpFromSilence("Bye.")).toBe(false);
   });
 });

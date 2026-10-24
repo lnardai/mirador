@@ -1,5 +1,6 @@
 import { inDesktopApp } from "./desktop-bridge.ts";
 import { microphoneProblem, NO_MICROPHONE_API, type MicrophonePlace } from "./dictation.ts";
+import type { SpeechSpan } from "./pause-watch.ts";
 import { wavOf } from "./wav.ts";
 
 const SPEECH_SAMPLE_RATE = 16_000;
@@ -9,8 +10,8 @@ const CAPTURE_FRAMES = 4096;
 export class MicrophoneProblem extends Error {}
 
 export interface Recording {
-  /** Ends the recording, giving what was said as 16 kHz mono WAV. */
-  finish(): Promise<Blob>;
+  /** Ends the recording, giving what was said as 16 kHz mono WAV: all of it, or the span where speech was heard. */
+  finish(span?: SpeechSpan | null): Promise<Blob>;
   cancel(): void;
 }
 
@@ -99,9 +100,11 @@ export async function startRecording(onLevel: (level: number) => void, onRecordi
     void listening.close();
   };
   return {
-    async finish() {
+    async finish(span) {
       release();
-      return asSpeechClip(joined(chunks), listening.sampleRate);
+      const samples = joined(chunks);
+      const at = (ms: number) => Math.min(samples.length, Math.round((ms / 1000) * listening.sampleRate));
+      return asSpeechClip(span ? samples.slice(at(span.fromMs), at(span.toMs)) : samples, listening.sampleRate);
     },
     cancel: release,
   };

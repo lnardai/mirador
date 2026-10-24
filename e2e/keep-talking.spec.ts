@@ -9,7 +9,7 @@ import { toneWav } from "./wav.ts";
 
 test.use(fakeMicrophone);
 
-const SAID = ["SAY First answer.", "SAY Second answer.", "Please repeat that.", "SAY Third answer.", "Stop listening.", "SAY Fourth answer."];
+const SAID = ["SAY First answer.", "SAY Second answer.", "Please repeat that.", "Thank you. Thank you.", "SAY Third answer.", "Stop listening.", "SAY Fourth answer."];
 
 let heard = 0;
 
@@ -114,13 +114,13 @@ test("with Keep talking, the microphone opens again once a dictated message's re
     await expect(dictate, "and listens once more after the second reply").toHaveAttribute("aria-pressed", "true", { timeout: 30_000 });
   });
 
-  await test.step("\"repeat that\" reads the last reply again instead of going to the agent, and the conversation goes on", async () => {
-    await expect(asked).toHaveText([SAID[0], SAID[1], SAID[3]], { timeout: 30_000 });
+  await test.step("\"repeat that\" reads the last reply again instead of going to the agent, \"Thank you\" made up from silence is not sent, and the conversation goes on", async () => {
+    await expect(asked).toHaveText([SAID[0], SAID[1], SAID[4]], { timeout: 30_000 });
     await expect(answers.last()).toHaveText("Third answer.", { timeout: 30_000 });
   });
 
   await test.step("\"stop listening\" ends the conversation without sending anything", async () => {
-    await expect.poll(() => heard, { timeout: 30_000 }).toBe(5);
+    await expect.poll(() => heard, { timeout: 30_000 }).toBe(6);
     await expect(dictate).toHaveAttribute("aria-pressed", "false", { timeout: 30_000 });
     await page.waitForTimeout(6_000);
     await expect(asked).toHaveCount(3);
@@ -131,7 +131,7 @@ test("with Keep talking, the microphone opens again once a dictated message's re
 
   await test.step("Esc ends a conversation started again: nothing more is sent", async () => {
     await dictate.click();
-    await expect(composer.locator("textarea")).toHaveValue(SAID[5]!, { timeout: 30_000 });
+    await expect(composer.locator("textarea")).toHaveValue(SAID[6]!, { timeout: 30_000 });
     await composer.locator("textarea").press("Enter");
     await expect(dictate, "listens again after the reply").toHaveAttribute("aria-pressed", "true", { timeout: 30_000 });
     await page.keyboard.press("Escape");
@@ -143,6 +143,6 @@ test("with Keep talking, the microphone opens again once a dictated message's re
 
   await test.step("a chime tells each time the microphone opens again, and each time it has heard, dictating by hand too", async () => {
     const turns = ["listening", "heard"];
-    expect(await chimes()).toEqual(["heard", ...turns, ...turns, ...turns, ...turns, "heard", "listening"]);
+    expect(await chimes()).toEqual(["heard", ...turns, ...turns, ...turns, ...turns, ...turns, "heard", "listening"]);
   });
 });

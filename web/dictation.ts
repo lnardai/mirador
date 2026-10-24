@@ -24,7 +24,7 @@ export type DictationPhase = "idle" | "starting" | "listening" | "transcribing";
 export type VoiceCommand = "stop" | "repeat";
 
 const voiceCommands: Record<VoiceCommand, string[]> = {
-  stop: ["stop", "stop listening", "stop talking", "be quiet", "that's all", "that is all", "enough"],
+  stop: ["stop", "stop listening", "stop talking", "be quiet", "that's all", "that is all", "enough", "bye", "bye bye", "goodbye"],
   repeat: ["repeat", "repeat that", "repeat it", "say that again", "say it again", "again", "once more"],
 };
 
@@ -38,6 +38,26 @@ const asCommand = (words: string) =>
     .trim()
     .replace(politeWords, "")
     .trim();
+
+/** What speech recognition, Whisper most of all, is known to write for silence, noise or music, as if a video were ending. */
+const madeUpPhrases = new Set([
+  "thank you",
+  "thanks",
+  "thank you very much",
+  "thank you for watching",
+  "thanks for watching",
+  "thank you so much for watching",
+  "please subscribe",
+  "subscribe",
+  "you",
+  "subtitles by the amara org community",
+]);
+
+/** Nothing but words that recognition makes up from silence, or no words at all: not worth sending. */
+export function madeUpFromSilence(text: string) {
+  const sentences = text.split(/[.!?…\n]+/).map(asCommand).filter((sentence) => sentence !== "");
+  return sentences.every((sentence) => madeUpPhrases.has(sentence));
+}
 
 /** In English, after translation, so one set of phrases serves every language; only the whole of it counts: "stop the build" goes to the agent. */
 export function voiceCommand(text: string): VoiceCommand | null {
