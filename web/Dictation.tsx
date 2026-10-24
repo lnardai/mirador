@@ -7,7 +7,7 @@ import { dictationStatus, pressed, released, spacedAtCaret, voiceCommand, type D
 import { joinDrafts } from "./drafts.ts";
 import { hints } from "./hints.ts";
 import { insertAtCaret } from "./insert-at-caret.ts";
-import { pauseWatch, type PauseWatch } from "./pause-watch.ts";
+import { KEEP_TALKING_WAIT_MS, pauseWatch, type PauseWatch } from "./pause-watch.ts";
 import { startRecording, type Recording } from "./recorder.ts";
 import { allowReplyAudio, chime, onSpokenReplyHeard, repeatLastReply, stopReading } from "./reply-player.ts";
 import { dictates, shortcutKeys } from "./shortcuts.ts";
@@ -130,7 +130,7 @@ export function useDictation({
     let watch: PauseWatch | null = null;
     const recordingStarted = () => {
       if (listening.current !== started) return;
-      watch = pauseWatch(performance.now());
+      watch = listeningAgain ? pauseWatch(performance.now(), KEEP_TALKING_WAIT_MS) : pauseWatch(performance.now());
       setPhase("listening");
     };
     const started: Listening = {

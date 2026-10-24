@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { defaultVoiceSettings, type VoiceSettings } from "../shared/voice.ts";
 import type { EngineServerState } from "../shared/voice-engine.ts";
 import { dictationStatus, HOLD_MS, microphoneProblem, NO_MICROPHONE_API, pressed, released, spacedAtCaret, voiceCommand, type MicrophonePlace, type Press } from "../web/dictation.ts";
-import { NOTHING_HEARD_MS, PAUSE_ENDS_MS, pauseWatch } from "../web/pause-watch.ts";
+import { KEEP_TALKING_WAIT_MS, NOTHING_HEARD_MS, PAUSE_ENDS_MS, pauseWatch } from "../web/pause-watch.ts";
 import { wavOf } from "../web/wav.ts";
 
 const up: Press = { kind: "up" };
@@ -50,6 +50,13 @@ describe("the pause watch", () => {
     const watch = pauseWatch(1_000);
     expect(watch.hear(room, 1_000 + NOTHING_HEARD_MS - 1)).toBe("go-on");
     expect(watch.hear(room, 1_000 + NOTHING_HEARD_MS)).toBe("nothing-heard");
+  });
+
+  test("keeping a spoken conversation going waits two minutes for the first word", () => {
+    const watch = pauseWatch(1_000, KEEP_TALKING_WAIT_MS);
+    expect(watch.hear(room, 1_000 + NOTHING_HEARD_MS)).toBe("go-on");
+    expect(watch.hear(room, 1_000 + KEEP_TALKING_WAIT_MS - 1)).toBe("go-on");
+    expect(watch.hear(room, 1_000 + KEEP_TALKING_WAIT_MS)).toBe("nothing-heard");
   });
 
   test("a noisy room is not speech, but speaking over it is", () => {
