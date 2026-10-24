@@ -228,7 +228,7 @@ const CHIME_VOLUME = 0.15;
 /** For keeping a spoken conversation going with the eyes elsewhere: rising as the microphone opens, falling once it has heard. */
 export type Chime = "listening" | "heard";
 
-/** Resolves once it has played, at once when the page can't play sound. */
+/** Resolves once it has played, at once when the page can't play sound; by the clock, as a context suspended meanwhile would never end the tone. */
 export function chime(kind: Chime) {
   if (!context || context.state !== "running") return Promise.resolve();
   const [from, to] = kind === "listening" ? [660, 990] : [880, 520];
@@ -241,11 +241,9 @@ export function chime(kind: Chime) {
   volume.gain.exponentialRampToValueAtTime(CHIME_VOLUME, at + 0.02);
   volume.gain.exponentialRampToValueAtTime(0.0001, at + CHIME_SECONDS);
   tone.connect(volume).connect(context.destination);
-  return new Promise<void>((resolve) => {
-    tone.onended = () => resolve();
-    tone.start(at);
-    tone.stop(at + CHIME_SECONDS);
-  });
+  tone.start(at);
+  tone.stop(at + CHIME_SECONDS);
+  return new Promise<void>((resolve) => setTimeout(resolve, CHIME_SECONDS * 1000));
 }
 
 /** The first composer of the conversation that can listen again does; another pane of it stays quiet. */
