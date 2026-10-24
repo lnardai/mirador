@@ -48,17 +48,24 @@ const voiceAddress = () => `http://127.0.0.1:${(voiceServer.address() as Address
 
 test("with Keep talking, a clock ticks while the agent works on what was dictated, and two low tones tell when the host is lost", async ({ page }) => {
   test.setTimeout(180_000);
-  /** The sounds by their first pitch: the clock's tick and tock, the chimes, and the tones of a lost connection. */
+  /** The sounds by their first pitch: the clock's tick and tock by the ring a click goes through, the chimes and the tones of a lost connection by their tone's. */
   await page.addInitScript(() => {
     const sounds: string[] = [];
     (window as unknown as { sounds: string[] }).sounds = sounds;
-    const named: Record<number, string> = { 1200: "tick", 900: "tock", 660: "listening", 880: "heard", 330: "connection lost" };
+    const named: Record<number, string> = { 660: "listening", 880: "heard", 330: "connection lost" };
+    const clockBeats: Record<number, string> = { 2600: "tick", 1900: "tock" };
     const firstPitch = new WeakMap<AudioParam, number>();
     const setValueAtTime = AudioParam.prototype.setValueAtTime;
     AudioParam.prototype.setValueAtTime = function (value, at) {
       if (!firstPitch.has(this)) firstPitch.set(this, value);
       return setValueAtTime.call(this, value, at);
     };
+    const connect = AudioNode.prototype.connect as (this: AudioNode, destination: AudioNode) => AudioNode;
+    AudioNode.prototype.connect = function (this: AudioNode, destination: AudioNode, ...rest: number[]) {
+      const beat = this instanceof AudioBufferSourceNode && destination instanceof BiquadFilterNode ? clockBeats[firstPitch.get(destination.frequency) ?? 0] : undefined;
+      if (beat) sounds.push(beat);
+      return (connect as (...args: unknown[]) => AudioNode).call(this, destination, ...rest);
+    } as typeof AudioNode.prototype.connect;
     const start = OscillatorNode.prototype.start;
     OscillatorNode.prototype.start = function (at) {
       const name = named[firstPitch.get(this.frequency) ?? 0];

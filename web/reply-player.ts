@@ -274,21 +274,57 @@ export function chime(kind: Chime) {
 }
 
 const CLOCK_BEATS = 4;
-const CLOCK_BEAT_SECONDS = 0.9;
-const CLOCK_TICK_SECONDS = 0.06;
-const CLOCK_VOLUME = 0.3;
-/** The tick higher than the tock, like an old pendulum clock's escapement. */
-const TICK_PITCH = 1_200;
-const TOCK_PITCH = 900;
+const CLOCK_BEAT_SECONDS = 1;
+const CLOCK_CLICK_SECONDS = 0.025;
+const CLOCK_VOLUME = 0.5;
+
+/** A wooden mantel clock: a noise click through the escapement's ring and the case's body, the tock lower and softer. */
+const clockBeats = {
+  tick: { click: 2_600, body: 520, loudness: 0.9 },
+  tock: { click: 1_900, body: 420, loudness: 0.7 },
+};
+
+let clickNoise: AudioBuffer | null = null;
+
+function noise() {
+  if (clickNoise) return clickNoise;
+  clickNoise = context!.createBuffer(1, Math.ceil(context!.sampleRate * CLOCK_CLICK_SECONDS * 3), context!.sampleRate);
+  const samples = clickNoise.getChannelData(0);
+  for (let index = 0; index < samples.length; index++) samples[index] = Math.random() * 2 - 1;
+  return clickNoise;
+}
+
+function decaying(at: number, loudness: number, seconds: number) {
+  const volume = context!.createGain();
+  volume.gain.setValueAtTime(0.0001, at);
+  volume.gain.exponentialRampToValueAtTime(loudness, at + 0.002);
+  volume.gain.exponentialRampToValueAtTime(0.0001, at + seconds);
+  volume.connect(context!.destination);
+  return volume;
+}
+
+function resonance(pitch: number, sharpness: number, at: number) {
+  const filter = context!.createBiquadFilter();
+  filter.type = "bandpass";
+  filter.frequency.setValueAtTime(pitch, at);
+  filter.Q.value = sharpness;
+  return filter;
+}
+
+function clockBeat({ click, body, loudness }: (typeof clockBeats)["tick"], at: number) {
+  const sound = context!.createBufferSource();
+  sound.buffer = noise();
+  sound.connect(resonance(click, 3, at)).connect(decaying(at, loudness * CLOCK_VOLUME, CLOCK_CLICK_SECONDS));
+  sound.connect(resonance(body, 12, at)).connect(decaying(at, loudness * CLOCK_VOLUME * 1.3, CLOCK_CLICK_SECONDS * 2.2));
+  sound.start(at);
+  sound.stop(at + CLOCK_CLICK_SECONDS * 3);
+}
 
 /** Tick-tock, tick-tock, quietly, as the agent works on what was dictated. */
 function clockTicks() {
   if (!soundPlays()) return;
   const at = context!.currentTime;
-  for (let beat = 0; beat < CLOCK_BEATS; beat++) {
-    const pitch = beat % 2 === 0 ? TICK_PITCH : TOCK_PITCH;
-    tone(pitch, pitch * 0.8, at + beat * CLOCK_BEAT_SECONDS, CLOCK_TICK_SECONDS, CLOCK_VOLUME, "triangle");
-  }
+  for (let beat = 0; beat < CLOCK_BEATS; beat++) clockBeat(beat % 2 === 0 ? clockBeats.tick : clockBeats.tock, at + beat * CLOCK_BEAT_SECONDS);
 }
 
 /** Two low falling tones: the page lost the host, so no reply is coming until it reconnects. */
