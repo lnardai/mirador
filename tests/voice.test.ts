@@ -199,6 +199,14 @@ describe("dictation", () => {
     expect(heard[1]!.json).toMatchObject({ model: "/voice/models/gemma-4-12b", chat_template_kwargs: { enable_thinking: false } });
   });
 
+  test("the host log tells how long hearing and translating took, to show which keeps the user waiting", async () => {
+    transcript = { text: "Futtasd le az e2e teszteket.", language: "hu" };
+    translation = "Run the e2e tests.";
+    const logged: string[] = [];
+    await new Voice(() => onThisMac, () => undefined, thisMacEngine, (line) => logged.push(line)).dictation(clip);
+    expect(logged).toEqual([expect.stringMatching(/^voice: hearing 0\.00 s of speech took \d+\.\d\d s$/), expect.stringMatching(/^voice: translating into English took \d+\.\d\d s$/)]);
+  });
+
   test("on this Mac's engine, English is heard as English with another language chosen, and a clip it takes for a third language is heard again in the chosen one", async () => {
     const voice = new Voice(() => ({ ...onThisMac, language: "hu" }), () => undefined, thisMacEngine);
     const passes = () => heard.map(({ path, form }) => (form ? `heard ${form.language ?? "as it is"}` : path));

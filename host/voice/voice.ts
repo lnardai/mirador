@@ -46,22 +46,41 @@ export function profileVoiceModel(profile: Profile, model: string): ChatEndpoint
 /** An own server may answer without the language it heard, as OpenAI's newer speech models do. */
 const tellsLanguage = (source: VoiceSource) => source.kind === "this-mac" && choosableModel(source.model)?.tellsLanguage === true;
 
+const logLine = (line: string) => console.log(`${new Date().toISOString()} ${line}`);
+
+/** 16 kHz mono 16-bit WAV. */
+const WAV_BYTES_PER_SECOND = 32_000;
+
+const seconds = (ms: number) => `${(ms / 1000).toFixed(2)} s`;
+
 export class Voice {
   constructor(
     private readonly settings: () => VoiceSettings,
     private readonly profileById: (profileId: string) => Profile | undefined,
     private readonly thisMac: ThisMac = notSetUpOnThisMac,
+    private readonly log: (line: string) => void = logLine,
   ) {}
+
+  /** How long each step of speaking with the agent takes, in the host log, to tell which keeps the user waiting. */
+  private async timed<T>(step: string, work: () => Promise<T>) {
+    const startedAt = performance.now();
+    try {
+      return await work();
+    } finally {
+      this.log(`voice: ${step} took ${seconds(performance.now() - startedAt)}`);
+    }
+  }
 
   /** What a clip of 16 kHz mono WAV says, in English when the user has translation on. */
   async dictation(clip: Blob): Promise<Dictation> {
     const settings = this.settings();
-    const heard = await this.heardIn(settings.recognition, clip, settings.language === AUTO_LANGUAGE ? null : settings.language);
+    const clipLength = seconds((clip.size / WAV_BYTES_PER_SECOND) * 1000);
+    const heard = await this.timed(`hearing ${clipLength} of speech`, () => this.heardIn(settings.recognition, clip, settings.language === AUTO_LANGUAGE ? null : settings.language));
     const { language } = heard;
     const untranslated = { text: heard.text, original: null, language };
     const { voiceModel } = settings;
     if (!settings.translateToEnglish || heard.text === "" || (language && isEnglish(language)) || voiceModel.kind === "off") return untranslated;
-    const english = await this.inEnglish(voiceModel, heard.text);
+    const english = await this.timed("translating into English", () => this.inEnglish(voiceModel, heard.text));
     return english === heard.text ? untranslated : { text: english, original: heard.text, language };
   }
 
@@ -90,13 +109,15 @@ export class Voice {
   async replySummary(reply: string) {
     const { voiceModel, replyLanguage } = this.settings();
     if (voiceModel.kind === "off") throw new VoiceUnavailable("Spoken replies need a voice model. Settings → Voice can set one.");
-    return this.withVoiceModel(voiceModel, (endpoint) => spokenSummary(endpoint, reply, replyLanguage));
+    return this.timed("summing up a reply", () => this.withVoiceModel(voiceModel, (endpoint) => spokenSummary(endpoint, reply, replyLanguage)));
   }
 
   /** A sentence of a reply's summary, spoken as MP3. */
   async spoken(sentence: string) {
-    const wav = await this.spokenAsWav(sentence);
-    return new Blob([await mp3Of(new Uint8Array(await wav.arrayBuffer()))], { type: "audio/mpeg" });
+    return this.timed("speaking a sentence", async () => {
+      const wav = await this.spokenAsWav(sentence);
+      return new Blob([await mp3Of(new Uint8Array(await wav.arrayBuffer()))], { type: "audio/mpeg" });
+    });
   }
 
   private async spokenAsWav(sentence: string) {
