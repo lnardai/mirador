@@ -276,7 +276,7 @@ export function chime(kind: Chime) {
 const CLOCK_BEATS = 4;
 const CLOCK_BEAT_SECONDS = 1;
 const CLOCK_CLICK_SECONDS = 0.025;
-const CLOCK_VOLUME = 0.5;
+const CLOCK_VOLUME = 0.9;
 
 /** A wooden mantel clock: a noise click through the escapement's ring and the case's body, the tock lower and softer. */
 const clockBeats = {
