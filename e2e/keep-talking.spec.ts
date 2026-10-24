@@ -141,8 +141,8 @@ test("with Keep talking, the microphone opens again once a dictated message's re
     await expect(dictate).toHaveAttribute("aria-pressed", "false");
   });
 
-  await test.step("a chime tells each time the microphone opens again, and each time it has heard, but not when dictating by hand", async () => {
+  await test.step("a chime tells each time the microphone opens again, and each time it has heard, dictating by hand too", async () => {
     const turns = ["listening", "heard"];
-    expect(await chimes()).toEqual([...turns, ...turns, ...turns, ...turns, "listening"]);
+    expect(await chimes()).toEqual(["heard", ...turns, ...turns, ...turns, ...turns, "heard", "listening"]);
   });
 });

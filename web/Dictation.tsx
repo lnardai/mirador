@@ -105,7 +105,7 @@ export function useDictation({
       }
       setPhase("transcribing");
       const clip = await recording.finish();
-      if (sendsWhatIsHeard.current) void chime("heard");
+      if (settings.keepTalking) void chime("heard");
       put(await transcribed(conversationId, clip));
     } catch (error) {
       if (nextDictationBegan()) return;
