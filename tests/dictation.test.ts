@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { defaultVoiceSettings, type VoiceSettings } from "../shared/voice.ts";
 import type { EngineServerState } from "../shared/voice-engine.ts";
-import { dictationStatus, HOLD_MS, microphoneProblem, NO_MICROPHONE_API, pressed, released, spacedAtCaret, type MicrophonePlace, type Press } from "../web/dictation.ts";
+import { dictationStatus, HOLD_MS, microphoneProblem, NO_MICROPHONE_API, pressed, released, spacedAtCaret, voiceCommand, type MicrophonePlace, type Press } from "../web/dictation.ts";
 import { NOTHING_HEARD_MS, PAUSE_ENDS_MS, pauseWatch } from "../web/pause-watch.ts";
 import { wavOf } from "../web/wav.ts";
 
@@ -142,5 +142,25 @@ describe("a clip in WAV", () => {
     expect(view.getUint16(34, true)).toBe(16);
     expect(view.getUint32(40, true)).toBe(10);
     expect([0, 1, 2, 3, 4].map((index) => view.getInt16(44 + index * 2, true))).toEqual([0, 32767, -32767, 32767, 16384]);
+  });
+});
+
+describe("a command said while keeping a spoken conversation going", () => {
+  test("stop and repeat are heard in their usual wordings, whatever the case, punctuation or politeness", () => {
+    expect(voiceCommand("Stop.", null)).toBe("stop");
+    expect(voiceCommand("Stop listening, please!", null)).toBe("stop");
+    expect(voiceCommand("Please repeat that.", null)).toBe("repeat");
+    expect(voiceCommand("Say that again?", null)).toBe("repeat");
+  });
+
+  test("the words spoken count too, when what goes in is their translation", () => {
+    expect(voiceCommand("Repeat it once more.", "Ismételd meg!")).toBe("repeat");
+    expect(voiceCommand("Enough.", "Elég.")).toBe("stop");
+  });
+
+  test("a command inside a longer message goes to the agent", () => {
+    expect(voiceCommand("Stop the build and repeat the tests.", null)).toBeNull();
+    expect(voiceCommand("Can you repeat that function for the other file?", null)).toBeNull();
+    expect(voiceCommand("", null)).toBeNull();
   });
 });

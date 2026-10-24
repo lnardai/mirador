@@ -136,9 +136,19 @@ function inAdvance<T>(making: Promise<T>) {
   return making;
 }
 
+interface ReadReply {
+  key: string;
+  reply: string;
+  readingAs: string;
+}
+
+/** By conversation, so that "repeat that" reads the same reply again, in the same words. */
+const lastRead = new Map<string, ReadReply>();
+
 /** Sums the reply up and speaks it, starting as soon as the first sentence is ready; reading another reply stops this one. Tells whether it was heard to the end. */
 export async function readReply(conversationId: string, key: string, reply: string, readingAs: string) {
   stopReading();
+  lastRead.set(conversationId, { key, reply, readingAs });
   allowReplyAudio();
   const aborts = new AbortController();
   let source: AudioBufferSourceNode | null = null;
@@ -202,6 +212,14 @@ export function readWhenSpokenTurnEnds(conversationId: string, events: StoredEve
   awaited = null;
   const reply = outcome === "ended" ? lastReply(timeline) : null;
   if (reply && readingAs) void readReply(conversationId, reply.key, reply.text, readingAs).then((heard) => heard && listenAgainIn(conversationId));
+}
+
+/** Reads the conversation's last reply read aloud again, and keeps the spoken conversation going once it is heard; false when none was read. */
+export function repeatLastReply(conversationId: string) {
+  const last = lastRead.get(conversationId);
+  if (!last) return false;
+  void readReply(conversationId, last.key, last.reply, last.readingAs).then((heard) => heard && listenAgainIn(conversationId));
+  return true;
 }
 
 /** The first composer of the conversation that can listen again does; another pane of it stays quiet. */

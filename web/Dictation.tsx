@@ -3,18 +3,19 @@ import { flushSync } from "react-dom";
 import { isCanvasFrameMessage } from "../shared/canvas-document.ts";
 import { speaksReplies, type Dictation as Dictated, type VoiceSettings } from "../shared/voice.ts";
 import type { VoiceEngineStatus } from "../shared/voice-engine.ts";
-import { dictationStatus, pressed, released, spacedAtCaret, type DictationPhase, type Press } from "./dictation.ts";
+import { dictationStatus, pressed, released, spacedAtCaret, voiceCommand, type DictationPhase, type Press } from "./dictation.ts";
 import { joinDrafts } from "./drafts.ts";
 import { hints } from "./hints.ts";
 import { insertAtCaret } from "./insert-at-caret.ts";
 import { pauseWatch, type PauseWatch } from "./pause-watch.ts";
 import { startRecording, type Recording } from "./recorder.ts";
-import { allowReplyAudio, onSpokenReplyHeard, stopReading } from "./reply-player.ts";
+import { allowReplyAudio, onSpokenReplyHeard, repeatLastReply, stopReading } from "./reply-player.ts";
 import { dictates, shortcutKeys } from "./shortcuts.ts";
 
 const RECOGNITION_OFF = "Dictating needs speech recognition. Settings → Voice can turn it on.";
 const NOTHING_HEARD = "Nothing was heard, so dictation stopped.";
 const NO_WORDS = "Speech recognition heard no words.";
+const NOTHING_TO_REPEAT = "No reply has been read aloud here yet, so there is nothing to repeat.";
 
 const releasingKeys = ["Meta", "Control", "Shift"];
 const aDialogIsOpen = () => document.querySelector(".modal-backdrop") !== null;
@@ -74,6 +75,11 @@ export function useDictation({
 
   const put = (dictated: Dictated) => {
     if (dictated.text.trim() === "") return setProblem(NO_WORDS);
+    if (sendsWhatIsHeard.current) {
+      const command = voiceCommand(dictated.text, dictated.original);
+      if (command === "stop") return;
+      if (command === "repeat") return repeatLastReply(conversationId) || setProblem(NOTHING_TO_REPEAT);
+    }
     insertDictated(textarea.current, setText, dictated.text);
     dictatedIntoDraft.current = true;
     if (settings.sendRightAway || sendsWhatIsHeard.current) {

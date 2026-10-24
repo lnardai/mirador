@@ -9,7 +9,7 @@ import { toneWav } from "./wav.ts";
 
 test.use(fakeMicrophone);
 
-const SAID = ["SAY First answer.", "SAY Second answer.", "SAY Third answer."];
+const SAID = ["SAY First answer.", "SAY Second answer.", "Please repeat that.", "SAY Third answer.", "Stop listening.", "SAY Fourth answer."];
 
 let heard = 0;
 
@@ -48,6 +48,18 @@ const voiceAddress = () => `http://127.0.0.1:${(voiceServer.address() as Address
 
 test("with Keep talking, the microphone opens again once a dictated message's reply has been read, and what is said next is sent", async ({ page }) => {
   test.setTimeout(180_000);
+  /** Notes which reply each reading is of: a reply heard again plays the sound it kept, without asking the voice server. */
+  await page.addInitScript(() => {
+    const readings: number[] = [];
+    (window as unknown as { readings: number[] }).readings = readings;
+    new MutationObserver((changes) => {
+      for (const change of changes) {
+        const button = change.target as Element;
+        if (button.getAttribute("aria-label") === "Stop reading") readings.push([...document.querySelectorAll(".read-aloud button")].indexOf(button));
+      }
+    }).observe(document, { subtree: true, attributes: true, attributeFilter: ["aria-label"] });
+  });
+  const readings = () => page.evaluate(() => (window as unknown as { readings: number[] }).readings);
   await signIn(page, host);
   await addWorkspace(page, host.projectDir);
   const profiles = await createProfile(page, "voice", "", "", "opencode");
@@ -83,11 +95,30 @@ test("with Keep talking, the microphone opens again once a dictated message's re
     await expect(dictate, "and listens once more after the second reply").toHaveAttribute("aria-pressed", "true", { timeout: 30_000 });
   });
 
-  await test.step("Esc ends the conversation: nothing more is sent", async () => {
+  await test.step("\"repeat that\" reads the last reply again instead of going to the agent, and the conversation goes on", async () => {
+    await expect(asked).toHaveText([SAID[0], SAID[1], SAID[3]], { timeout: 30_000 });
+    await expect(answers.last()).toHaveText("Third answer.", { timeout: 30_000 });
+  });
+
+  await test.step("\"stop listening\" ends the conversation without sending anything", async () => {
+    await expect.poll(() => heard, { timeout: 30_000 }).toBe(5);
+    await expect(dictate).toHaveAttribute("aria-pressed", "false", { timeout: 30_000 });
+    await page.waitForTimeout(6_000);
+    await expect(asked).toHaveCount(3);
+    await expect(composer.locator("textarea")).toHaveValue("");
+    expect(await readings(), "the first, second and third replies, and the second once more").toEqual([0, 1, 1, 2]);
+    await expect(dictate).toHaveAttribute("aria-pressed", "false");
+  });
+
+  await test.step("Esc ends a conversation started again: nothing more is sent", async () => {
+    await dictate.click();
+    await expect(composer.locator("textarea")).toHaveValue(SAID[5]!, { timeout: 30_000 });
+    await composer.locator("textarea").press("Enter");
+    await expect(dictate, "listens again after the reply").toHaveAttribute("aria-pressed", "true", { timeout: 30_000 });
     await page.keyboard.press("Escape");
     await expect(dictate).toHaveAttribute("aria-pressed", "false");
     await page.waitForTimeout(6_000);
-    await expect(asked).toHaveCount(2);
+    await expect(asked).toHaveCount(4);
     await expect(dictate).toHaveAttribute("aria-pressed", "false");
   });
 });

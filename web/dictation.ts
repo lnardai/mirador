@@ -20,6 +20,34 @@ export function released(press: Press, at: number): { press: Press; action: Pres
 
 export type DictationPhase = "idle" | "starting" | "listening" | "transcribing";
 
+/** Said on its own while keeping a spoken conversation going, these go to Mirador instead of the agent. */
+export type VoiceCommand = "stop" | "repeat";
+
+const voiceCommands: Record<VoiceCommand, string[]> = {
+  stop: ["stop", "stop listening", "stop talking", "be quiet", "that's all", "that is all", "állj", "elég", "ennyi", "fejezd be"],
+  repeat: ["repeat", "repeat that", "repeat it", "say that again", "say it again", "again", "ismételd", "ismételd meg", "mondd újra", "mondd még egyszer"],
+};
+
+const politeWords = /^(please|ok|okay|kérlek)\s+|\s+(please|kérlek)$/gu;
+
+const asCommand = (words: string) =>
+  words
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}'\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(politeWords, "")
+    .trim();
+
+/** Only the whole of what was heard counts, in English or in the words spoken: "stop the build" goes to the agent. */
+export function voiceCommand(text: string, original: string | null): VoiceCommand | null {
+  const said = [text, original ?? ""].map(asCommand);
+  for (const [command, phrases] of Object.entries(voiceCommands) as [VoiceCommand, string[]][]) {
+    if (said.some((words) => phrases.includes(words))) return command;
+  }
+  return null;
+}
+
 export function dictationStatus(phase: DictationPhase, settings: VoiceSettings, servers: Record<EngineServer, EngineServerState>) {
   if (phase === "idle") return null;
   if (phase === "starting") return "Starting the microphone…";
