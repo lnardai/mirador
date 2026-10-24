@@ -223,7 +223,7 @@ export function repeatLastReply(conversationId: string) {
 }
 
 const CHIME_SECONDS = 0.18;
-const CHIME_VOLUME = 0.15;
+const CHIME_VOLUME = 0.45;
 
 /** For keeping a spoken conversation going with the eyes elsewhere: rising as the microphone opens, falling once it has heard. */
 export type Chime = "listening" | "heard";
