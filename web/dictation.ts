@@ -21,11 +21,12 @@ export function released(press: Press, at: number): { press: Press; action: Pres
 export type DictationPhase = "idle" | "starting" | "listening" | "transcribing";
 
 /** Said on its own while keeping a spoken conversation going, these go to Mirador instead of the agent. */
-export type VoiceCommand = "stop" | "repeat";
+export type VoiceCommand = "stop" | "repeat" | "help";
 
 const voiceCommands: Record<VoiceCommand, string[]> = {
   stop: ["stop", "stop listening", "stop talking", "be quiet", "that's all", "that is all", "enough", "bye", "bye bye", "goodbye", "thank you", "thanks", "thank you very much", "thanks a lot"],
   repeat: ["repeat", "repeat that", "repeat it", "say that again", "say it again", "again", "once more"],
+  help: ["help", "what can i say", "what do i say", "what can i say here", "commands", "voice commands"],
 };
 
 const politeWords = /^((please|ok|okay)\s+)+|(\s+please)+$/g;
@@ -62,6 +63,24 @@ export function madeUpFromSilence(text: string) {
   return sentencesOf(text).every((sentence) => madeUpPhrases.has(sentence));
 }
 
+const thinkingWords = new Set(["hmm", "hm", "hmmm", "mm", "mmm", "um", "umm", "uh", "uhh", "er", "erm", "ah", "well", "so", "wait"]);
+const thinkingPhrases = /\blet me (think|see)\b/g;
+
+/** Only the sounds of thinking, as "Hmm. Well.": the user hasn't said anything yet, so the microphone listens on. */
+export const onlyThinking = (text: string) => {
+  const words = sentencesOf(text).join(" ").replace(thinkingPhrases, " ").split(" ").filter((word) => word !== "");
+  return sentencesOf(text).length > 0 && words.every((word) => thinkingWords.has(word));
+};
+
+/** What the microphone listens for: a message, the next turn of a spoken conversation, or the answer to a question read aloud. */
+export type ListeningFor = "message" | "conversation" | "answer";
+
+const listeningLines: Record<ListeningFor, string> = {
+  message: "Listening… It stops when you pause or let go. Esc cancels.",
+  conversation: "Listening… Say “stop” to end, “repeat that” to hear it again, or “help” for more.",
+  answer: "Listening… Say “yes”, “the others”, a number, or answer in your own words.",
+};
+
 const commandIn = (sentence: string) => (Object.keys(voiceCommands) as VoiceCommand[]).find((command) => voiceCommands[command].includes(sentence)) ?? null;
 
 /**
@@ -73,10 +92,10 @@ export function voiceCommand(text: string): VoiceCommand | null {
   return commands.size === 1 ? ([...commands][0] ?? null) : null;
 }
 
-export function dictationStatus(phase: DictationPhase, settings: VoiceSettings, servers: Record<EngineServer, EngineServerState>) {
+export function dictationStatus(phase: DictationPhase, settings: VoiceSettings, servers: Record<EngineServer, EngineServerState>, listeningFor: ListeningFor = "message") {
   if (phase === "idle") return null;
   if (phase === "starting") return "Starting the microphone…";
-  if (phase === "listening") return "Listening… It stops when you pause or let go. Esc cancels.";
+  if (phase === "listening") return listeningLines[listeningFor];
   if (settings.recognition.kind === "this-mac" && servers.speech !== "ready") return "Loading speech recognition on this Mac…";
   if (settings.voiceModel.kind === "this-mac" && servers.voiceModel === "loading") return "Loading the voice model on this Mac…";
   return "Turning speech into text…";

@@ -64,6 +64,7 @@ import { movedCaretToLineEdge } from "./line-edge-keys.ts";
 import { findsTemplate, keyLabels, shortcutKeys } from "./shortcuts.ts";
 import { commandLineOf, isShellCommand, shellCommandOf } from "./shell.ts";
 import { useShellOutputStyle } from "./shell-output.ts";
+import { askAloudWhenWaiting } from "./spoken-ask.ts";
 import { Statusline } from "./Statusline.tsx";
 import type { OpenConversation } from "./state.ts";
 import { useSubagentUsage } from "./subagent-usage.ts";
@@ -1820,6 +1821,7 @@ export function ChatPanel({
   const timeline = useMemo(() => buildTimeline(open.events), [open.events]);
   const readingAs = replyReadingOf(voiceSettings);
   useEffect(() => readWhenSpokenTurnEnds(conversation.id, open.events, timeline, readingAs), [timeline]);
+  useEffect(() => askAloudWhenWaiting(conversation.id, open.canvas), [open.canvas]);
   useEffect(() => () => stopReadingIn(conversation.id), [conversation.id]);
   const begun = useMemo(() => !open.loaded || hasBegun(open.events), [open.loaded, open.events]);
   const pendingCommands = useMemo(() => awaitingDelivery(timeline.flatMap((block) => (block.kind === "command" ? [block.command] : []))), [timeline]);

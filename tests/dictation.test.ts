@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { defaultVoiceSettings, type VoiceSettings } from "../shared/voice.ts";
 import type { EngineServerState } from "../shared/voice-engine.ts";
-import { dictationStatus, HOLD_MS, microphoneProblem, NO_MICROPHONE_API, pressed, released, madeUpFromSilence, spacedAtCaret, voiceCommand, type MicrophonePlace, type Press } from "../web/dictation.ts";
+import { dictationStatus, HOLD_MS, madeUpFromSilence, type MicrophonePlace, microphoneProblem, NO_MICROPHONE_API, onlyThinking, type Press, pressed, released, spacedAtCaret, voiceCommand } from "../web/dictation.ts";
 import { KEEP_TALKING_WAIT_MS, NOTHING_HEARD_MS, PAUSE_ENDS_MS, pauseWatch } from "../web/pause-watch.ts";
 import { wavOf } from "../web/wav.ts";
 
@@ -102,6 +102,12 @@ describe("the status under the message box", () => {
     expect(dictationStatus("idle", settings(ownServer), servers("stopped"))).toBeNull();
     expect(dictationStatus("starting", settings(ownServer), servers("stopped"))).toBe("Starting the microphone…");
     expect(dictationStatus("listening", settings(ownServer), servers("stopped"))).toBe("Listening… It stops when you pause or let go. Esc cancels.");
+    expect(dictationStatus("listening", settings(ownServer), servers("stopped"), "conversation"), "the words Keep talking takes").toBe(
+      "Listening… Say “stop” to end, “repeat that” to hear it again, or “help” for more.",
+    );
+    expect(dictationStatus("listening", settings(ownServer), servers("stopped"), "answer"), "and those a question read aloud takes").toBe(
+      "Listening… Say “yes”, “the others”, a number, or answer in your own words.",
+    );
     expect(dictationStatus("transcribing", settings(ownServer), servers("stopped"))).toBe("Turning speech into text…");
     expect(dictationStatus("transcribing", settings(thisMacRecognition), servers("stopped"))).toBe("Loading speech recognition on this Mac…");
     expect(dictationStatus("transcribing", settings(thisMacRecognition), servers("loading"))).toBe("Loading speech recognition on this Mac…");
@@ -218,5 +224,22 @@ describe("what speech recognition makes up from silence", () => {
     expect(madeUpFromSilence("Thanks for watching. Now run the tests.")).toBe(false);
     expect(madeUpFromSilence("Thank you.")).toBe(false);
     expect(madeUpFromSilence("Bye.")).toBe(false);
+  });
+});
+
+describe("thinking aloud while keeping a spoken conversation going", () => {
+  test("only the sounds of thinking aren't sent, as the user hasn't said anything yet", () => {
+    expect(onlyThinking("Hmm.")).toBe(true);
+    expect(onlyThinking("Hmm. Well. Hmm, hmm.")).toBe(true);
+    expect(onlyThinking("Um, let me think.")).toBe(true);
+    expect(onlyThinking("Hmm, the second one.")).toBe(false);
+    expect(onlyThinking("Well done.")).toBe(false);
+    expect(onlyThinking("")).toBe(false);
+  });
+
+  test("help asks what can be said", () => {
+    expect(voiceCommand("Help.")).toBe("help");
+    expect(voiceCommand("What can I say?")).toBe("help");
+    expect(voiceCommand("Help me fix the build.")).toBeNull();
   });
 });

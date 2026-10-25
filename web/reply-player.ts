@@ -150,8 +150,19 @@ const lastRead = new Map<string, ReadReply>();
 
 /** Sums the reply up and speaks it, starting as soon as the first sentence is ready; reading another reply stops this one. Tells whether it was heard to the end. */
 export async function readReply(conversationId: string, key: string, reply: string, readingAs: string) {
-  stopReading();
   lastRead.set(conversationId, { key, reply, readingAs });
+  const id = JSON.stringify([conversationId, key, reply, readingAs]);
+  return speak(conversationId, key, async (signal) => keptSummary(id) ?? keep(id, { sentences: await sayable(conversationId, reply, signal), sounds: [] }));
+}
+
+/** Speaks these sentences as they are, without summing them up, as a question asked aloud is; tells whether they were heard to the end. */
+export function sayAloud(conversationId: string, key: string, sentences: string[]) {
+  const id = JSON.stringify([conversationId, key, sentences]);
+  return speak(conversationId, key, async () => keptSummary(id) ?? keep(id, { sentences, sounds: [] }));
+}
+
+async function speak(conversationId: string, key: string, summary: (signal: AbortSignal) => Promise<KeptSummary>) {
+  stopReading();
   allowReplyAudio();
   const aborts = new AbortController();
   let source: AudioBufferSourceNode | null = null;
@@ -163,8 +174,7 @@ export async function readReply(conversationId: string, key: string, reply: stri
   const reading: ReplyReading = { conversationId, key, phase: "summing-up" };
   publish({ reading, problem: null });
   try {
-    const id = JSON.stringify([conversationId, key, reply, readingAs]);
-    const { sentences, sounds } = keptSummary(id) ?? keep(id, { sentences: await sayable(conversationId, reply, aborts.signal), sounds: [] });
+    const { sentences, sounds } = await summary(aborts.signal);
     const soundOf = async (index: number) => (sounds[index] ??= await spokenSentence(conversationId, sentences[index]!, aborts.signal));
     let next = inAdvance(soundOf(0));
     for (const index of sentences.keys()) {
@@ -191,6 +201,11 @@ export function stopReading() {
   stopCurrent?.();
 }
 
+/** Stops what is being read only when it is this. */
+export function stopReadingOf(conversationId: string, key: string) {
+  if (snapshot.reading?.conversationId === conversationId && snapshot.reading.key === key) stopReading();
+}
+
 /** As when the user switches away from the conversation: a reply of another conversation reads on. */
 export function stopReadingIn(conversationId: string) {
   if (snapshot.reading?.conversationId === conversationId) stopReading();
@@ -210,6 +225,9 @@ function awaitReply(next: AwaitedReply | null) {
 export function awaitSpokenReply(conversationId: string, events: StoredEvent[], { ticks = false } = {}) {
   awaitReply({ conversationId, afterSeq: events.at(-1)?.seq ?? 0, ticks });
 }
+
+/** Keep talking keeps a dictated message's turn going here, so what the agent asks meanwhile is asked aloud. */
+export const keepsTalkingIn = (conversationId: string) => awaited?.conversationId === conversationId && awaited.ticks;
 
 /** As when a message the user typed starts the conversation's next turn; another pane's dictated message still gets its reply read. */
 export function forgetSpokenReply(conversationId: string) {
@@ -232,6 +250,13 @@ export function readWhenSpokenTurnEnds(conversationId: string, events: StoredEve
   awaitReply(null);
   const reply = outcome === "ended" ? lastReply(timeline) : null;
   if (reply && readingAs) void readReply(conversationId, reply.key, reply.text, readingAs).then((heard) => heard && listenAgainIn(conversationId));
+}
+
+const CONVERSATION_HELP = ["Say stop to end the conversation, or repeat that to hear my last reply again.", "Anything else goes to the agent as your next message."];
+
+/** "Help" in a spoken conversation says what can be said, then listens again. */
+export function helpWithConversation(conversationId: string) {
+  void sayAloud(conversationId, "help", CONVERSATION_HELP).then((heard) => heard && listenAgainIn(conversationId));
 }
 
 /** Reads the conversation's last reply read aloud again, and keeps the spoken conversation going once it is heard; false when none was read. */

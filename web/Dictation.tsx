@@ -3,14 +3,15 @@ import { flushSync } from "react-dom";
 import { isCanvasFrameMessage } from "../shared/canvas-document.ts";
 import { speaksReplies, type Dictation as Dictated, type VoiceSettings } from "../shared/voice.ts";
 import type { VoiceEngineStatus } from "../shared/voice-engine.ts";
-import { dictationStatus, madeUpFromSilence, pressed, released, spacedAtCaret, voiceCommand, type DictationPhase, type Press } from "./dictation.ts";
+import { dictationStatus, madeUpFromSilence, onlyThinking, pressed, released, spacedAtCaret, voiceCommand, type DictationPhase, type ListeningFor, type Press } from "./dictation.ts";
 import { joinDrafts } from "./drafts.ts";
 import { hints } from "./hints.ts";
 import { insertAtCaret } from "./insert-at-caret.ts";
 import { KEEP_TALKING_WAIT_MS, pauseWatch, type PauseWatch, type SpeechSpan } from "./pause-watch.ts";
 import { startRecording, type Recording } from "./recorder.ts";
-import { allowReplyAudio, chime, onSpokenReplyHeard, quietClock, repeatLastReply, stopReading } from "./reply-player.ts";
+import { allowReplyAudio, chime, helpWithConversation, onSpokenReplyHeard, quietClock, repeatLastReply, stopReading } from "./reply-player.ts";
 import { dictates, shortcutKeys } from "./shortcuts.ts";
+import { answeringIn, heardAnswer, helpWithQuestion, repeatQuestion, stopAnswering } from "./spoken-ask.ts";
 
 const RECOGNITION_OFF = "Dictating needs speech recognition. Settings → Voice can turn it on.";
 const NOTHING_HEARD = "Nothing was heard, so dictation stopped.";
@@ -65,6 +66,7 @@ export function useDictation({
   const [problem, setProblem] = useState<string | null>(null);
   const [originals, setOriginals] = useState<string[]>([]);
   const [sentOriginal, setSentOriginal] = useState<string | null>(null);
+  const [listeningFor, setListeningFor] = useState<ListeningFor>("message");
   const press = useRef<Press>({ kind: "up" });
   const listening = useRef<Listening | null>(null);
   const latestSendNow = useRef(sendNow);
@@ -80,8 +82,16 @@ export function useDictation({
     if (!/[\p{L}\p{N}]/u.test(dictated.text)) return setProblem(NO_WORDS);
     if (sendsWhatIsHeard.current) {
       const command = voiceCommand(dictated.text);
+      if (answeringIn(conversationId)) {
+        if (command === "stop") return stopAnswering(conversationId);
+        if (command === "repeat") return repeatQuestion(conversationId);
+        if (command === "help") return helpWithQuestion(conversationId);
+        setSentOriginal(dictated.original);
+        return heardAnswer(conversationId, dictated.text);
+      }
       if (command === "stop") return;
       if (command === "repeat") return repeatLastReply(conversationId) || setProblem(NOTHING_TO_REPEAT);
+      if (command === "help") return helpWithConversation(conversationId);
     }
     insertDictated(textarea.current, setText, dictated.text);
     dictatedIntoDraft.current = true;
@@ -112,7 +122,7 @@ export function useDictation({
       const clip = await recording.finish(keepsTalking ? ending.speechSpan() : null);
       if (settings.keepTalking && speaksReplies(settings)) void chime("heard");
       const dictated = await transcribed(conversationId, clip);
-      if (keepsTalking && madeUpFromSilence(dictated.text)) return listenOnAfterNoise();
+      if (keepsTalking && (madeUpFromSilence(dictated.text) || onlyThinking(dictated.text))) return listenOnAfterNoise();
       put(dictated);
     } catch (error) {
       if (nextDictationBegan()) return;
@@ -135,6 +145,7 @@ export function useDictation({
   /** The microphone would hear a reply being read aloud. */
   const begin = ({ listeningAgain = false } = {}) => {
     sendsWhatIsHeard.current = listeningAgain;
+    setListeningFor(listeningAgain ? (answeringIn(conversationId) ? "answer" : "conversation") : "message");
     stopReading();
     if (speaksReplies(settings)) allowReplyAudio();
     setProblem(null);
@@ -260,6 +271,7 @@ export function useDictation({
 
   return {
     phase,
+    listeningFor,
     available,
     problem,
     said: sentOriginal ?? (originals.length > 0 ? originals.join(" ") : null),
@@ -325,7 +337,7 @@ export function DictateButton({ dictation }: { dictation: DictationControls }) {
 }
 
 export function DictationLines({ dictation, settings, engine }: { dictation: DictationControls; settings: VoiceSettings; engine: VoiceEngineStatus }) {
-  const status = dictationStatus(dictation.phase, settings, engine.servers);
+  const status = dictationStatus(dictation.phase, settings, engine.servers, dictation.listeningFor);
   if (status === null && dictation.said === null) return null;
   return (
     <div className="dictation-lines">
