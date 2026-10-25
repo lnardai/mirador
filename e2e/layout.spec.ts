@@ -74,6 +74,18 @@ test.describe("on a system in dark mode", () => {
     await theme(page, "Light").click();
     expect(await background(page)).toBe(LIGHT);
   });
+
+  test("a dropdown's options keep the dark theme's colours, so their light text never sits on a light list", async ({ page }) => {
+    await signIn(page, host);
+    await openSettings(page);
+    await theme(page, "Dark").click();
+    const option = page.locator("dialog select option, .settings select option").first();
+    const colours = await option.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return [style.backgroundColor, style.color];
+    });
+    expect(colours).toEqual(["rgb(21, 22, 26)", "rgb(228, 229, 233)"]);
+  });
 });
 
 test("a narrow conversation pane keeps its title readable and moves the header's buttons below it", async ({ page }) => {

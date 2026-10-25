@@ -138,6 +138,16 @@ select {
   padding: 6px 8px;
 }
 
+/* The open list is drawn by the browser, which can paint it light while the options inherit a dark theme's light text */
+option {
+  background: var(--panel);
+  color: var(--text);
+}
+
+option:disabled {
+  color: var(--muted);
+}
+
 input:focus-visible,
 textarea:focus-visible,
 select:focus-visible {
